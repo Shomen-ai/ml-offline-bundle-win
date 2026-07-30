@@ -1,0 +1,21 @@
+# Список для СКАЧИВАНИЯ на машине с интернетом (не обязательно Windows).
+# Отличие от requirements-new.txt: uvicorn[standard] развёрнут в явные
+# компоненты, потому что pip download оценивает платформенные маркеры
+# по текущей ОС и спотыкается об uvloop (его не существует под Windows).
+# colorama добавлена явно — она win-only и иначе не скачается с macOS/Linux.
+llama-cpp-python
+oracledb
+fastapi
+uvicorn
+websockets
+httptools
+colorama
+python-dotenv
+pyyaml
+watchfiles
+sse-starlette
+python-multipart
+faiss-cpu
+pypdf
+python-docx
+openpyxl
