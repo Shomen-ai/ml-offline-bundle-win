@@ -1,0 +1,266 @@
+================================================================================
+  ПЕРЕНОС НА ИЗОЛИРОВАННУЮ МАШИНУ
+  Скачиваем на машине с интернетом -> переносим -> ставим на рабочей машине
+
+  Машина A = есть интернет (откуда качаем)
+  Машина B = рабочая, с картой RTX A4000, Python 3.11, там уже стоит бандл
+================================================================================
+
+  ГЛАВНОЕ ПРАВИЛО: колёса (.whl) привязаны к платформе и версии Python.
+  Поэтому на машине A всегда качаем с явным указанием цели:
+      --only-binary=:all: --platform win_amd64
+      --python-version 311 --implementation cp --abi cp311
+  Тогда неважно, какая ОС и какой Python на самой машине A.
+
+  Ориентировочный объём: ~6-7 ГБ (из них ~5 ГБ — файл модели).
+
+
+################################################################################
+#  ШАГ 0. НА МАШИНЕ B — СНЯТЬ СЛЕПОК ТЕКУЩЕГО ОКРУЖЕНИЯ
+#
+#  Зачем: чтобы при докачивании новых пакетов pip не решил заодно обновить
+#  вам pydantic, numpy или transformers и не сломал рабочее окружение.
+#  Файл constraints.txt переносим на машину A вместе с флешкой.
+################################################################################
+
+D:\bundle\ml-bundle\.venv\Scripts\activate
+pip freeze > D:\transfer\constraints.txt
+
+:: заодно узнать точную версию Python, под которую качать
+python -c "import sys, platform; print(sys.version_info[:2], platform.machine())"
+
+
+################################################################################
+#  ШАГ 1. НА МАШИНЕ B — СПИСОК ТОГО, ЧТО ДОБАВЛЯЕМ
+#  Создать файл D:\transfer\requirements-new.txt со следующим содержимым:
+################################################################################
+
+::   llama-cpp-python
+::   oracledb
+::   fastapi
+::   uvicorn[standard]
+::   sse-starlette
+::   python-multipart
+::   faiss-cpu
+::   pypdf
+::   python-docx
+::   openpyxl
+
+:: (последние четыре — если делаете RAG по документам; не нужны — уберите)
+
+
+################################################################################
+#                        ЧАСТЬ A — НА МАШИНЕ С ИНТЕРНЕТОМ
+################################################################################
+
+mkdir D:\transfer\wheels
+mkdir D:\transfer\bin
+mkdir D:\transfer\models
+
+
+#-------------------------------------------------------------------------------
+#  A1. PYTHON-ПАКЕТЫ (вместе со всеми зависимостями)
+#-------------------------------------------------------------------------------
+
+pip download -r D:\transfer\requirements-new.txt ^
+  -c D:\transfer\constraints.txt ^
+  --only-binary=:all: ^
+  --platform win_amd64 --python-version 311 --implementation cp --abi cp311 ^
+  --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu118 ^
+  --dest D:\transfer\wheels
+
+:: проверить, что колесо llama-cpp именно CUDA-шное, а не с обычного PyPI:
+dir D:\transfer\wheels\llama_cpp_python*
+:: в имени файла должно быть cu118 (например llama_cpp_python-0.3.x+cu118-cp311-...whl)
+:: если cu118 в имени нет — pip взял CPU-сборку, перекачать:
+
+:: pip download llama-cpp-python --only-binary=:all: ^
+::   --platform win_amd64 --python-version 311 --implementation cp --abi cp311 ^
+::   --index-url https://abetlen.github.io/llama-cpp-python/whl/cu118 ^
+::   --dest D:\transfer\wheels
+::   ( --index-url вместо --extra-index-url заставляет брать ТОЛЬКО оттуда )
+
+:: сколько всего файлов набралось — пригодится для сверки после переноса
+dir /b D:\transfer\wheels | find /c /v ""
+
+
+#-------------------------------------------------------------------------------
+#  A2. ORACLE INSTANT CLIENT 19 (для Oracle 11g обязательно именно 19.x)
+#-------------------------------------------------------------------------------
+
+:: полный Basic — берите его, если база в CL8MSWIN1251
+curl -L -o D:\transfer\bin\instantclient19.zip ^
+  https://download.oracle.com/otn_software/nt/instantclient/1931000/instantclient-basic-windows.x64-19.31.0.0.0dbru.zip
+
+:: облегчённый Basic Light (~35 МБ) — только если база в AL32UTF8
+:: curl -L -o D:\transfer\bin\instantclient19-lite.zip ^
+::   https://download.oracle.com/otn_software/nt/instantclient/1931000/instantclient-basiclite-windows.x64-19.31.0.0.0dbru.zip
+
+
+#-------------------------------------------------------------------------------
+#  A3. VISUAL C++ REDISTRIBUTABLE (нужен и llama.cpp, и Instant Client)
+#-------------------------------------------------------------------------------
+
+curl -L -o D:\transfer\bin\vc_redist.x64.exe https://aka.ms/vs/17/release/vc_redist.x64.exe
+
+
+#-------------------------------------------------------------------------------
+#  A4. МОДЕЛЬ GGUF (самый большой файл, ~5 ГБ)
+#-------------------------------------------------------------------------------
+
+:: посмотреть точные имена файлов в репозитории, не заходя на сайт:
+pip install huggingface_hub
+python -c "from huggingface_hub import list_repo_files; [print(f) for f in list_repo_files('bartowski/Qwen2.5-7B-Instruct-GGUF') if f.endswith('.gguf')]"
+
+curl -L -o D:\transfer\models\Qwen2.5-7B-Instruct-Q4_K_M.gguf ^
+  "https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf?download=true"
+
+:: посчитать хеш, чтобы после переноса убедиться, что файл доехал целым
+certutil -hashfile D:\transfer\models\Qwen2.5-7B-Instruct-Q4_K_M.gguf SHA256
+
+
+#-------------------------------------------------------------------------------
+#  A5. NODE.JS + ФРОНТ (только если Vue собирается на машине B)
+#-------------------------------------------------------------------------------
+
+:: узнать актуальную LTS-версию без захода на сайт:
+curl -s https://nodejs.org/dist/index.json > D:\transfer\bin\node-index.json
+python -c "import json;d=json.load(open(r'D:\transfer\bin\node-index.json'));print(next(v['version'] for v in d if v['lts']))"
+
+:: подставить полученную версию (пример: v22.20.0)
+curl -L -o D:\transfer\bin\node-x64.msi https://nodejs.org/dist/v22.20.0/node-v22.20.0-x64.msi
+
+:: npm-пакеты офлайн проще всего перенести целиком:
+:: на машине A внутри проекта фронта выполнить  npm install
+:: и скопировать в D:\transfer\frontend папку node_modules + package.json + package-lock.json
+:: (работает, если A и B — обе Windows x64)
+
+
+#-------------------------------------------------------------------------------
+#  A6. СВЕРКА ПЕРЕД ПЕРЕНОСОМ
+#-------------------------------------------------------------------------------
+
+dir /s D:\transfer
+:: скопировать всю папку D:\transfer на флешку / в сетевую шару
+
+
+################################################################################
+#                        ЧАСТЬ B — НА РАБОЧЕЙ МАШИНЕ
+################################################################################
+
+:: считаем, что папку положили в D:\transfer
+
+#-------------------------------------------------------------------------------
+#  B1. СИСТЕМНОЕ
+#-------------------------------------------------------------------------------
+
+D:\transfer\bin\vc_redist.x64.exe /install /passive /norestart
+
+mkdir D:\oracle
+tar -xf D:\transfer\bin\instantclient19.zip -C D:\oracle
+dir D:\oracle
+:: запомнить точное имя каталога, ожидаем D:\oracle\instantclient_19_31
+
+mkdir D:\bundle\models
+copy D:\transfer\models\*.gguf D:\bundle\models\
+
+:: сверить хеш с тем, что посчитали на машине A
+certutil -hashfile D:\bundle\models\Qwen2.5-7B-Instruct-Q4_K_M.gguf SHA256
+
+
+#-------------------------------------------------------------------------------
+#  B2. PYTHON-ПАКЕТЫ — СТРОГО ОФЛАЙН
+#  --no-index запрещает pip ходить в сеть: если чего-то не хватает,
+#  он честно упадёт, а не полезет на PyPI.
+#-------------------------------------------------------------------------------
+
+D:\bundle\ml-bundle\.venv\Scripts\activate
+
+pip uninstall -y ollama langchain-ollama
+
+pip install --no-index --find-links=D:\transfer\wheels ^
+  -r D:\transfer\requirements-new.txt
+
+:: если ругается на отсутствующую зависимость — её просто не скачали на машине A.
+:: Записать имя, докачать там же командой из A1 и повторить.
+
+
+#-------------------------------------------------------------------------------
+#  B3. ПРОВЕРКИ
+#-------------------------------------------------------------------------------
+
+:: llama.cpp собран с CUDA — должно быть True
+python -c "from llama_cpp import llama_cpp; print('GPU offload:', llama_cpp.llama_supports_gpu_offload())"
+
+:: Oracle-клиент подхватился — должно напечатать (19, 31, 0, 0, 0)
+python -c "import oracledb; oracledb.init_oracle_client(lib_dir=r'D:\oracle\instantclient_19_31'); print(oracledb.clientversion())"
+
+:: модель реально уезжает на карту
+python -c "from llama_cpp import Llama; l=Llama(model_path=r'D:\bundle\models\Qwen2.5-7B-Instruct-Q4_K_M.gguf', n_gpu_layers=-1, n_ctx=2048, verbose=True); print(l.create_chat_completion(messages=[{'role':'user','content':'2+2?'}], max_tokens=16)['choices'][0]['message']['content'])"
+:: в логе ищем строку "offloaded N/N layers to GPU"; параллельно смотреть nvidia-smi
+
+:: подключение к базе (подставить свои реквизиты)
+python -c "import oracledb; oracledb.init_oracle_client(lib_dir=r'D:\oracle\instantclient_19_31'); c=oracledb.connect(user='APP_USER', password='...', dsn='10.0.0.5:1521/ORCLPDB'); cur=c.cursor(); cur.execute('SELECT banner FROM v$version WHERE ROWNUM=1'); print(cur.fetchone()[0])"
+
+
+#-------------------------------------------------------------------------------
+#  B4. NODE / ФРОНТ (если переносили)
+#-------------------------------------------------------------------------------
+
+msiexec /i D:\transfer\bin\node-x64.msi /passive
+:: открыть НОВОЕ окно терминала, чтобы подхватился PATH
+node -v
+npm -v
+
+:: скопировать node_modules рядом с проектом фронта и собрать без сети:
+:: xcopy /E /I D:\transfer\frontend\node_modules D:\project\frontend\node_modules
+:: cd D:\project\frontend && npm run build --offline
+
+
+#-------------------------------------------------------------------------------
+#  B5. ЗАФИКСИРОВАТЬ РЕЗУЛЬТАТ
+#-------------------------------------------------------------------------------
+
+pip freeze > D:\bundle\ml-bundle\requirements.txt
+
+:: ВАЖНО: в pip freeze версия llama-cpp-python запишется без пометки cu118.
+:: Если по этому файлу кто-то поставит пакет заново с PyPI — получит CPU-сборку.
+:: Поэтому храните само колесо: copy D:\transfer\wheels\llama_cpp_python*.whl D:\bundle\wheels\
+:: и рядом с requirements.txt комментарий, откуда оно взялось.
+
+
+################################################################################
+#  ЧАСТЫЕ ПРОБЛЕМЫ ПРИ ОФЛАЙН-ПЕРЕНОСЕ
+################################################################################
+
+"ERROR: Could not find a version that satisfies the requirement X"  при install
+    -> зависимости X нет в папке wheels. На машине A:
+       pip download X --only-binary=:all: --platform win_amd64
+          --python-version 311 --implementation cp --abi cp311 --dest D:\transfer\wheels
+
+"is not a supported wheel on this platform"
+    -> колесо скачано под другой Python/архитектуру. Проверить, что на машине A
+       были указаны --python-version 311 --abi cp311 --platform win_amd64,
+       а на машине B  python --version  действительно показывает 3.11.
+
+"ERROR: Some externally-hosted files were ignored" / pip пытается в сеть
+    -> забыт --no-index. Без него pip при малейшей заминке уходит на PyPI.
+
+pip начал что-то СОБИРАТЬ из исходников
+    -> в папку попал .tar.gz вместо .whl. На машине A обязателен
+       --only-binary=:all: , иначе pip качает исходники для пакетов без колёс.
+
+llama_supports_gpu_offload() == False
+    -> перенесли CPU-колесо. Смотреть имя файла: в нём должно быть cu118.
+       Перекачать с --index-url (не --extra-index-url) на индекс cu118.
+
+pip обновил пакеты, которые трогать не хотелось
+    -> забыт -c constraints.txt на шаге A1. Откатиться:
+       pip install --no-index --find-links=D:\transfer\wheels -r constraints.txt
+
+DPI-1047 "Cannot locate a 64-bit Oracle Client library"
+    -> неверный путь в init_oracle_client. Сверить через  dir D:\oracle
+       (каталог может называться instantclient_19_31, а не как в примере).
+
+Модель весит меньше, чем на машине A / не грузится
+    -> файл побился при копировании. Сверить SHA256 (certutil -hashfile).

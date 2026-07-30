@@ -1,0 +1,10 @@
+llama-cpp-python
+oracledb
+fastapi
+uvicorn[standard]
+sse-starlette
+python-multipart
+faiss-cpu
+pypdf
+python-docx
+openpyxl

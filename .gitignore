@@ -1,0 +1,12 @@
+# большие бинарники живут в GitHub Releases, не в git
+*.whl
+*.gguf
+*.gguf.part*
+*.zip
+*.msi
+*.exe
+wheels/
+models/
+bin/
+node_modules/
+.DS_Store
