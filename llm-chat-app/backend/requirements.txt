@@ -1,0 +1,9 @@
+# Всё уже есть в офлайн-бандле машины B (репозиторий ml-offline-bundle-win)
+# или стояло там изначально (httpx, python-dotenv — см. constraints-machine-b.txt).
+# Отдельно ничего докачивать не нужно.
+fastapi
+uvicorn[standard]
+oracledb
+sse-starlette
+httpx
+python-dotenv
