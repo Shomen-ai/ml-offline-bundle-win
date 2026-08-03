@@ -40,6 +40,17 @@ D:\transfer\scripts\check_and_install.bat
 
 Python-пакеты в `wheels.zip` (со всеми зависимостями): `llama-cpp-python` (cu118), `oracledb`, `fastapi`, `uvicorn[standard]`, `sse-starlette`, `python-multipart`, `faiss-cpu`, `pypdf`, `python-docx`, `openpyxl`.
 
+## Что лежит в самом репозитории
+
+Помимо ассетов релиза, в репозитории едут файлы, которые нужны на машине B:
+
+| Папка | Что это |
+|---|---|
+| `llm-chat-app/` | **снимок** исходников чат-приложения (Vue 3 + FastAPI + Oracle + llama.cpp). Оригинал и вся история — в [Shomen-ai/llm-chat-app](https://github.com/Shomen-ai/llm-chat-app); правки вносить там, сюда переносить снимком |
+| `guides/` | инструкции: настройка Ruff, офлайн-закачка расширений VS Code, подборка цветовых тем |
+| `vsix-offline/` | готовые `.vsix` для установки без интернета: Ruff (win32-x64) и 5 тем |
+| `scripts/` | `check_and_install.bat` — установка бандла, `diagnose_llm_crash.bat` — сбор улик при падении LLM |
+
 ## Важные оговорки
 
 - **Про cu118 в имени файла.** Старые версии llama-cpp-python помечались `+cu118` в имени колеса — начиная с 0.3.x метки в имени нет, файл называется одинаково с CPU-сборкой. Это колесо скачано напрямую с CUDA-индекса abetlen (внутри — `ggml-cuda.dll` ~750 МБ), а установщик проверяет CUDA по факту: `llama_supports_gpu_offload()` должен вернуть `True`.
