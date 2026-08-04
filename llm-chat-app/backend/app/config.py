@@ -15,6 +15,14 @@ ORACLE_CLIENT_DIR = os.getenv("ORACLE_CLIENT_DIR", r"D:\oracle\instantclient_19_
 # Отдельный сервер с нейронкой (llm-server/server.py)
 LLM_URL = os.getenv("LLM_URL", "http://127.0.0.1:8001")
 
+# Active Directory. Пусто = вход по локальному паролю из таблицы USERS,
+# заполнено = проверка bind'ом в каталог, пароли в БД не хранятся.
+LDAP_URL = os.getenv("LDAP_URL", "")  # ldap://dc.example.local:389 (или ldaps://...:636)
+LDAP_DOMAIN = os.getenv("LDAP_DOMAIN", "")  # example.local — логин уходит как user@domain
+LDAP_BASE_DN = os.getenv("LDAP_BASE_DN", "")  # пусто = не искать атрибуты, только проверить пароль
+LDAP_USER_ATTR = os.getenv("LDAP_USER_ATTR", "sAMAccountName")
+LDAP_TIMEOUT = int(os.getenv("LDAP_TIMEOUT", "10"))
+
 # Сессии
 TOKEN_TTL_HOURS = int(os.getenv("TOKEN_TTL_HOURS", "72"))
 

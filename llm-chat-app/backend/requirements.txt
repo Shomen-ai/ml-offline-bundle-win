@@ -7,3 +7,6 @@ oracledb
 sse-starlette
 httpx
 python-dotenv
+# Только для доменной авторизации (LDAP_URL в .env). В базовом бандле ЭТОГО НЕТ —
+# колесо переносится отдельно: pip download ldap3 --only-binary=:all: ...
+ldap3

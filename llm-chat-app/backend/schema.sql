@@ -1,11 +1,13 @@
 -- Схема под Oracle 11g: без IDENTITY-колонок (это 12c+), id через sequence.
 -- Применяется скриптом apply_schema.py (или вручную в sqlplus).
 
+-- password_hash/salt заполняются только в локальном режиме авторизации.
+-- При входе через Active Directory пароль в базу не попадает и они остаются NULL.
 CREATE TABLE users (
     id            NUMBER        PRIMARY KEY,
     username      VARCHAR2(64)  NOT NULL UNIQUE,
-    password_hash VARCHAR2(256) NOT NULL,
-    salt          VARCHAR2(64)  NOT NULL,
+    password_hash VARCHAR2(256),
+    salt          VARCHAR2(64),
     created_at    DATE          DEFAULT SYSDATE NOT NULL
 );
 

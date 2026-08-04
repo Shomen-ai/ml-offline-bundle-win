@@ -1,7 +1,12 @@
 """Авторизация: регистрация, вход, сессионные токены в БД.
 
-Без внешних зависимостей: PBKDF2 из stdlib, opaque-токены в таблице SESSIONS —
-работает офлайн, ничего докачивать не нужно.
+Два режима, переключаются одним LDAP_URL в .env:
+
+* локальный (по умолчанию) — PBKDF2 из stdlib, пароли в таблице USERS;
+* доменный — проверка bind'ом в Active Directory, пароль в БД не попадает,
+  учётка заводится автоматически при первом входе.
+
+Механика сессий в обоих режимах одна: opaque-токен в таблице SESSIONS.
 """
 import hashlib
 import secrets
@@ -10,7 +15,7 @@ import oracledb
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
-from . import config, db
+from . import config, db, ldap_auth
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -45,8 +50,44 @@ def _issue_token(user_id: int) -> str:
     return token
 
 
+def _user_id_for(username: str) -> int:
+    """id доменного пользователя; при первом входе заводит строку в USERS.
+
+    Пароль не сохраняется — в доменном режиме колонки password_hash/salt пустые.
+    """
+    row = db.query_one("SELECT id FROM users WHERE username = :u", {"u": username})
+    if row is not None:
+        return int(row["id"])
+    try:
+        return db.insert_returning_id(
+            """
+            INSERT INTO users (id, username)
+            VALUES (users_seq.NEXTVAL, :username)
+            RETURNING id INTO :out_id
+            """,
+            {"username": username},
+        )
+    except oracledb.IntegrityError:
+        # два одновременных первых входа — сосед успел вставить, читаем его строку
+        row = db.query_one("SELECT id FROM users WHERE username = :u", {"u": username})
+        if row is None:
+            raise
+        return int(row["id"])
+
+
+@router.get("/mode")
+def mode():
+    """Публичная ручка для фронта: показывать ли вкладку регистрации."""
+    return {"ldap": ldap_auth.enabled()}
+
+
 @router.post("/register", response_model=AuthOut)
 def register(body: Credentials):
+    if ldap_auth.enabled():
+        raise HTTPException(
+            status_code=403,
+            detail="Регистрация отключена: учётные записи берутся из домена",
+        )
     salt = secrets.token_hex(16)
     try:
         user_id = db.insert_returning_id(
@@ -68,11 +109,19 @@ def register(body: Credentials):
 
 @router.post("/login", response_model=AuthOut)
 def login(body: Credentials):
+    if ldap_auth.enabled():
+        person = ldap_auth.authenticate(body.username, body.password)
+        if person is None:
+            raise HTTPException(status_code=401, detail="Неверный логин или пароль")
+        user_id = _user_id_for(body.username)
+        return AuthOut(token=_issue_token(user_id), username=body.username)
+
     row = db.query_one(
         "SELECT id, password_hash, salt FROM users WHERE username = :u",
         {"u": body.username},
     )
-    if row is None:
+    # password_hash пуст у доменных учёток — локальным паролем такие не пускаем
+    if row is None or not row["password_hash"] or not row["salt"]:
         raise HTTPException(status_code=401, detail="Неверный логин или пароль")
     expected = row["password_hash"]
     actual = _hash_password(body.password, row["salt"])

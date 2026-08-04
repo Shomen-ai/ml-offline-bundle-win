@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, setAuth } from '../api'
 
@@ -9,6 +9,14 @@ const username = ref('')
 const password = ref('')
 const error = ref('')
 const busy = ref(false)
+// в доменном режиме регистрации нет — учётки приходят из Active Directory
+const ldap = ref(false)
+
+onMounted(async () => {
+  try {
+    ldap.value = (await api('/auth/mode')).ldap
+  } catch { /* backend старой версии — оставляем вкладку регистрации */ }
+})
 
 async function submit() {
   error.value = ''
@@ -30,12 +38,12 @@ async function submit() {
   <div class="login-page">
     <form class="login-card" @submit.prevent="submit">
       <h1>LLM Chat</h1>
-      <div class="tabs">
+      <div v-if="!ldap" class="tabs">
         <button type="button" :class="{ active: mode === 'login' }" @click="mode = 'login'">Вход</button>
         <button type="button" :class="{ active: mode === 'register' }" @click="mode = 'register'">Регистрация</button>
       </div>
       <label>
-        Логин
+        {{ ldap ? 'Доменный логин' : 'Логин' }}
         <input v-model.trim="username" autocomplete="username" required minlength="3" maxlength="64" />
       </label>
       <label>
