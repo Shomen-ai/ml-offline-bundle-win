@@ -17,6 +17,28 @@ async def list_models() -> dict:
         return r.json()
 
 
+async def health() -> dict:
+    async with httpx.AsyncClient(timeout=5) as client:
+        r = await client.get(f"{config.LLM_URL}/health")
+        r.raise_for_status()
+        return r.json()
+
+
+async def load(model: str, n_ctx: int, n_gpu_layers: int) -> dict:
+    """Перезагружает модель с новыми параметрами.
+
+    Таймаут щедрый: чтение весов с диска и раскладка по VRAM занимают
+    десятки секунд, а на модели покрупнее — минуты.
+    """
+    async with httpx.AsyncClient(timeout=600) as client:
+        r = await client.post(
+            f"{config.LLM_URL}/load",
+            json={"model": model, "n_ctx": n_ctx, "n_gpu_layers": n_gpu_layers},
+        )
+        r.raise_for_status()
+        return r.json()
+
+
 async def stream_chat(
     messages: list[dict],
     model: str | None,

@@ -10,6 +10,7 @@ from ..schemas.messages import MessageIn, MessageOut
 from ..services import dialogs as dialog_service
 from ..services import llm_client
 from ..services import messages as message_service
+from ..services import settings as settings_service
 
 router = APIRouter(prefix="/api", tags=["messages"])
 
@@ -40,13 +41,23 @@ async def send_message(body: MessageIn, dialog: dict = Depends(owned_dialog)):
             ),
         }
 
-        # 2) история диалога -> контекст модели
+        # 2) история диалога -> контекст модели; системный промпт из настроек
+        #    идёт первым сообщением и в базе не хранится
+        settings = await to_thread.run_sync(settings_service.get_all)
         history = await to_thread.run_sync(message_service.history_for_model, dialog_id)
+        if settings["system_prompt"]:
+            history = [{"role": "system", "content": settings["system_prompt"]}] + history
 
-        # 3) стримим ответ отдельного LLM-сервера
+        # 3) стримим ответ отдельного LLM-сервера. Модель, температура и потолок
+        #    длины — общие для всех диалогов, их задаёт админ-панель
         answer_parts: list[str] = []
         try:
-            async for delta in llm_client.stream_chat(history, dialog["model_name"]):
+            async for delta in llm_client.stream_chat(
+                history,
+                settings["model_name"],
+                max_tokens=settings["max_tokens"],
+                temperature=settings["temperature"],
+            ):
                 answer_parts.append(delta)
                 yield {"event": "delta", "data": delta}
         except Exception as e:

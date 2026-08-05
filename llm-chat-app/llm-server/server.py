@@ -39,6 +39,10 @@ app = FastAPI(title="LLM server")
 _lock = threading.Lock()
 _llama: Llama | None = None
 _current: str | None = None
+# параметры, с которыми модель реально загружена: их меняет админ-панель,
+# и смена любого из них означает перезагрузку весов в VRAM
+_current_n_ctx: int = N_CTX
+_current_n_gpu_layers: int = N_GPU_LAYERS
 
 
 class ChatRequest(BaseModel):
@@ -50,6 +54,9 @@ class ChatRequest(BaseModel):
 
 class LoadRequest(BaseModel):
     model: str
+    # необязательные: пусто = оставить те, с которыми модель уже загружена
+    n_ctx: int | None = Field(default=None, ge=512, le=131072)
+    n_gpu_layers: int | None = Field(default=None, ge=-1, le=999)
 
 
 def _available_models() -> list[str]:
@@ -58,9 +65,15 @@ def _available_models() -> list[str]:
     return sorted(f for f in os.listdir(MODELS_DIR) if f.lower().endswith(".gguf"))
 
 
-def _ensure_loaded(model: str | None) -> None:
-    """Грузит модель, если она ещё не загружена. Вызывать под _lock."""
-    global _llama, _current
+def _ensure_loaded(
+    model: str | None, n_ctx: int | None = None, n_gpu_layers: int | None = None
+) -> None:
+    """Грузит модель, если она ещё не загружена. Вызывать под _lock.
+
+    Смена n_ctx или n_gpu_layers требует перезагрузки весов так же,
+    как смена самой модели: эти параметры задаются при создании Llama.
+    """
+    global _llama, _current, _current_n_ctx, _current_n_gpu_layers
     names = _available_models()
     if not names:
         raise HTTPException(503, f"В {MODELS_DIR} нет ни одного .gguf")
@@ -69,26 +82,43 @@ def _ensure_loaded(model: str | None) -> None:
     model = os.path.basename(model)  # никакой навигации по путям
     if model not in names:
         raise HTTPException(404, f"Модели {model} нет в {MODELS_DIR}")
-    if _current == model and _llama is not None:
+
+    want_n_ctx = _current_n_ctx if n_ctx is None else n_ctx
+    want_n_gpu_layers = _current_n_gpu_layers if n_gpu_layers is None else n_gpu_layers
+    same = (
+        _current == model
+        and _llama is not None
+        and _current_n_ctx == want_n_ctx
+        and _current_n_gpu_layers == want_n_gpu_layers
+    )
+    if same:
         return
+
     # выгружаем прежнюю, чтобы освободить VRAM
     if _llama is not None:
         _llama = None
         gc.collect()
-    print(f"[llm] загружаю {model} (n_gpu_layers={N_GPU_LAYERS}, n_ctx={N_CTX})...")
+    print(f"[llm] загружаю {model} (n_gpu_layers={want_n_gpu_layers}, n_ctx={want_n_ctx})...")
     _llama = Llama(
         model_path=os.path.join(MODELS_DIR, model),
-        n_gpu_layers=N_GPU_LAYERS,
-        n_ctx=N_CTX,
+        n_gpu_layers=want_n_gpu_layers,
+        n_ctx=want_n_ctx,
         verbose=False,
     )
     _current = model
+    _current_n_ctx = want_n_ctx
+    _current_n_gpu_layers = want_n_gpu_layers
     print(f"[llm] {model} готова")
 
 
 @app.get("/health")
 def health():
-    return {"ok": True, "loaded": _current}
+    return {
+        "ok": True,
+        "loaded": _current,
+        "n_ctx": _current_n_ctx,
+        "n_gpu_layers": _current_n_gpu_layers,
+    }
 
 
 @app.get("/models")
@@ -109,8 +139,13 @@ def models():
 @app.post("/load")
 def load(req: LoadRequest):
     with _lock:
-        _ensure_loaded(req.model)
-    return {"ok": True, "loaded": _current}
+        _ensure_loaded(req.model, req.n_ctx, req.n_gpu_layers)
+    return {
+        "ok": True,
+        "loaded": _current,
+        "n_ctx": _current_n_ctx,
+        "n_gpu_layers": _current_n_gpu_layers,
+    }
 
 
 @app.post("/chat")

@@ -7,7 +7,6 @@ const router = useRouter()
 const username = getUsername()
 
 const dialogs = ref([])
-const models = ref([])
 const llmWarning = ref('')
 const activeId = ref(null)
 const messages = ref([])
@@ -21,10 +20,11 @@ let tmpSeq = 0
 
 const activeDialog = () => dialogs.value.find((d) => d.id === activeId.value) || null
 
-async function loadModels() {
-  const res = await api('/models')
-  models.value = res.models || []
-  llmWarning.value = res.error ? 'LLM-сервер недоступен: запустите scripts\\run_llm.bat' : ''
+async function loadLlmStatus() {
+  // модель выбирает админ в панели настроек; чату важно только,
+  // поднят ли сервер, чтобы предупредить заранее, а не на первой отправке
+  const res = await api('/llm/health')
+  llmWarning.value = res.ok ? '' : 'LLM-сервер недоступен: запустите scripts\\run_llm.bat'
 }
 
 async function loadDialogs() {
@@ -40,7 +40,7 @@ async function selectDialog(id) {
 }
 
 async function newDialog() {
-  const d = await api('/dialogs', { method: 'POST', body: { model_name: models.value[0]?.name || null } })
+  const d = await api('/dialogs', { method: 'POST', body: {} })
   dialogs.value.unshift(d)
   await selectDialog(d.id)
 }
@@ -54,13 +54,6 @@ async function removeDialog(id) {
     messages.value = []
     if (dialogs.value.length) await selectDialog(dialogs.value[0].id)
   }
-}
-
-async function changeModel(e) {
-  const d = activeDialog()
-  if (!d) return
-  const updated = await api(`/dialogs/${d.id}`, { method: 'PATCH', body: { model_name: e.target.value } })
-  d.model_name = updated.model_name
 }
 
 function scrollDown() {
@@ -126,7 +119,7 @@ async function logout() {
 
 onMounted(async () => {
   try {
-    await Promise.all([loadModels(), loadDialogs()])
+    await Promise.all([loadLlmStatus(), loadDialogs()])
   } catch (e) {
     error.value = e.message
   }
@@ -154,6 +147,7 @@ onMounted(async () => {
       </nav>
       <div class="sidebar-foot">
         <span class="user">{{ username }}</span>
+        <router-link class="ghost" to="/admin">Настройки</router-link>
         <button class="ghost" @click="logout">Выйти</button>
       </div>
     </aside>
@@ -161,15 +155,6 @@ onMounted(async () => {
     <main class="chat-main">
       <header class="chat-head">
         <span class="chat-title">{{ activeDialog()?.title || 'LLM Chat' }}</span>
-        <label class="model-pick" v-if="activeDialog()">
-          Модель
-          <select :value="activeDialog()?.model_name || ''" @change="changeModel">
-            <option value="" disabled>— выберите —</option>
-            <option v-for="m in models" :key="m.name" :value="m.name">
-              {{ m.name }} ({{ m.size_mb }} МБ){{ m.loaded ? ' — загружена' : '' }}
-            </option>
-          </select>
-        </label>
       </header>
 
       <p v-if="llmWarning" class="banner warn">{{ llmWarning }}</p>
@@ -191,7 +176,7 @@ onMounted(async () => {
           v-model="draft"
           rows="2"
           placeholder="Сообщение… (Enter — отправить, Shift+Enter — перенос)"
-          :disabled="busy || !activeId && !models.length"
+          :disabled="busy"
           @keydown="onComposerKeydown"
         ></textarea>
         <button class="primary" :disabled="busy || !draft.trim()" @click="send">

@@ -49,3 +49,12 @@ CREATE TABLE dpis_messages (
 CREATE SEQUENCE dpis_messages_seq;
 
 CREATE INDEX dpis_messages_dialog_idx ON dpis_messages (dialog_id);
+
+-- Настройки LLM, которые правит админ-панель. Ключ-значение: набор ключей
+-- меняется вместе с кодом, а миграций на каждый новый параметр не хочется.
+-- Значение CLOB'ом: системный промпт легко перерастает 4000 байт.
+-- Имена колонок skey/sval — key и value в Oracle зарезервированы.
+CREATE TABLE dpis_settings (
+    skey VARCHAR2(64) PRIMARY KEY,
+    sval CLOB
+);
