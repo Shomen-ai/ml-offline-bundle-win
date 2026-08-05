@@ -15,6 +15,9 @@ const draft = ref('')
 const busy = ref(false)
 const error = ref('')
 const messagesEl = ref(null)
+// счётчик временных ключей: пока сообщение не сохранено, id ему нужен всё равно,
+// а одинаковые ключи в v-for заставляют Vue переиспользовать чужие узлы
+let tmpSeq = 0
 
 const activeDialog = () => dialogs.value.find((d) => d.id === activeId.value) || null
 
@@ -76,21 +79,26 @@ async function send() {
   error.value = ''
   draft.value = ''
 
-  messages.value.push({ id: `tmp-u`, role: 'user', content: text })
-  const assistant = { id: `tmp-a`, role: 'assistant', content: '' }
-  messages.value.push(assistant)
+  tmpSeq += 1
+  const userMsg = { id: `tmp-u-${tmpSeq}`, role: 'user', content: text }
+  const assistant = { id: `tmp-a-${tmpSeq}`, role: 'assistant', content: '' }
+  messages.value.push(userMsg, assistant)
   scrollDown()
 
   try {
     await streamChat(d.id, text, {
       onStart: (meta) => {
         if (meta.dialog_title) d.title = meta.dialog_title
+        // подменяем временные ключи настоящими id из базы
+        if (meta.user_message_id) userMsg.id = meta.user_message_id
       },
       onDelta: (delta) => {
         assistant.content += delta
         scrollDown()
       },
-      onDone: () => {},
+      onDone: (meta) => {
+        if (meta.assistant_message_id) assistant.id = meta.assistant_message_id
+      },
       onError: (msg) => {
         error.value = msg
       },

@@ -162,6 +162,11 @@ async def send_message(dialog_id: int, body: MessageIn, user: dict = Depends(cur
                 answer_parts.append(delta)
                 yield {"event": "delta", "data": delta}
         except Exception as e:
+            # то, что успело долететь до экрана, сохраняем: иначе после
+            # перезагрузки диалога кусок ответа исчезает вместе с ошибкой
+            partial = "".join(answer_parts)
+            if partial:
+                await to_thread.run_sync(_save_message, dialog_id, "assistant", partial)
             yield {"event": "error", "data": f"Ошибка нейронки: {e}"}
             return
 
