@@ -52,6 +52,11 @@ class ChatRequest(BaseModel):
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
 
 
+class TokenizeRequest(BaseModel):
+    texts: list[str]
+    model: str | None = None
+
+
 class LoadRequest(BaseModel):
     model: str
     # необязательные: пусто = оставить те, с которыми модель уже загружена
@@ -146,6 +151,31 @@ def load(req: LoadRequest):
         "n_ctx": _current_n_ctx,
         "n_gpu_layers": _current_n_gpu_layers,
     }
+
+
+@app.post("/tokenize")
+def tokenize(req: TokenizeRequest):
+    """Длина текстов в токенах — тем же токенизатором, что у модели.
+
+    Намеренно НЕ берёт _lock: иначе подсчёт вставал бы в очередь за чужой
+    генерацией, а он нужен как раз перед ней. Токенизация читает только
+    словарь и не трогает состояние контекста.
+
+    От выгрузки модели из-под ног спасает локальная ссылка: пока она жива,
+    объект Llama не соберётся, даже если /load уже поставил на её место
+    другую модель.
+    """
+    llama = _llama
+    if llama is None:
+        # модель ещё не загружена — грузим честно, под общим замком
+        with _lock:
+            _ensure_loaded(req.model)
+        llama = _llama
+    counts = [
+        len(llama.tokenize(t.encode("utf-8"), add_bos=False, special=False))
+        for t in req.texts
+    ]
+    return {"counts": counts, "n_ctx": _current_n_ctx, "model": _current}
 
 
 @app.post("/chat")

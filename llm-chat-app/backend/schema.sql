@@ -26,12 +26,17 @@ CREATE TABLE dpis_sessions (
 
 CREATE INDEX dpis_sessions_user_idx ON dpis_sessions (user_id);
 
+-- summary — сжатая сводка начала диалога, summary_upto — id последнего
+-- сообщения, которое она покрывает. Заполняются, когда история перестаёт
+-- влезать в контекст модели.
 CREATE TABLE dpis_dialogs (
-    id         NUMBER        PRIMARY KEY,
-    user_id    NUMBER        NOT NULL REFERENCES dpis_users (id),
-    title      VARCHAR2(200) DEFAULT 'Новый диалог' NOT NULL,
-    model_name VARCHAR2(200),
-    created_at DATE          DEFAULT SYSDATE NOT NULL
+    id           NUMBER        PRIMARY KEY,
+    user_id      NUMBER        NOT NULL REFERENCES dpis_users (id),
+    title        VARCHAR2(200) DEFAULT 'Новый диалог' NOT NULL,
+    model_name   VARCHAR2(200),
+    summary      CLOB,
+    summary_upto NUMBER,
+    created_at   DATE          DEFAULT SYSDATE NOT NULL
 );
 
 CREATE SEQUENCE dpis_dialogs_seq;

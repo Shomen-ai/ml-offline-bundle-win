@@ -1,8 +1,13 @@
-"""Сообщения диалога: чтение, сохранение и сборка истории для модели."""
+"""Сообщения диалога: чтение и сохранение.
+
+Отбор того, что уместится в контекст модели, живёт в services/context.py —
+здесь только выборка сырых строк.
+"""
 from .. import db
 
-# сколько последних сообщений уходит в контекст модели
-HISTORY_LIMIT = 40
+# потолок на выборку: контекст всё равно режется по токенам, а тащить
+# из базы весь длинный диалог целиком незачем
+FETCH_LIMIT = 500
 
 
 def list_for_dialog(dialog_id: int) -> list[dict]:
@@ -26,20 +31,14 @@ def save(dialog_id: int, role: str, content: str) -> int:
     )
 
 
-def history_for_model(dialog_id: int) -> list[dict]:
-    """Последние HISTORY_LIMIT сообщений в формате messages для LLM-сервера.
-
-    Обрезка по количеству — временная: она не считает токены и потому
-    переполняет контекст на длинных диалогах. Заменяется на подсчёт
-    токенов со сжатием (см. спеку от 2026-08-06).
-    """
-    rows = db.query_all(
+def list_after(dialog_id: int, after_id: int) -> list[dict]:
+    """Сообщения диалога новее указанного id — то, что ещё не покрыто сводкой."""
+    return db.query_all(
         f"""
-        SELECT role, content FROM (
-            SELECT role, content, id FROM dpis_messages
-            WHERE dialog_id = :d ORDER BY id DESC
-        ) WHERE ROWNUM <= {HISTORY_LIMIT} ORDER BY id
+        SELECT id, role, content FROM (
+            SELECT id, role, content FROM dpis_messages
+            WHERE dialog_id = :d AND id > :after ORDER BY id DESC
+        ) WHERE ROWNUM <= {FETCH_LIMIT} ORDER BY id
         """,
-        {"d": dialog_id},
+        {"d": dialog_id, "after": after_id},
     )
-    return [{"role": r["role"], "content": r["content"]} for r in rows]

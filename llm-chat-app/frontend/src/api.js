@@ -49,7 +49,7 @@ export async function api(path, { method = 'GET', body } = {}) {
  * Отправка сообщения со стримингом ответа (SSE поверх fetch,
  * потому что EventSource не умеет POST и заголовки).
  */
-export async function streamChat(dialogId, content, { onStart, onDelta, onDone, onError }) {
+export async function streamChat(dialogId, content, { onStart, onStatus, onDelta, onDone, onError }) {
   const res = await fetch(`/api/dialogs/${dialogId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
@@ -76,6 +76,7 @@ export async function streamChat(dialogId, content, { onStart, onDelta, onDone, 
       }
       const data = dataLines.join('\n')
       if (event === 'start') onStart?.(JSON.parse(data))
+      else if (event === 'status') onStatus?.(data)
       else if (event === 'delta') onDelta?.(data)
       else if (event === 'done') onDone?.(JSON.parse(data))
       else if (event === 'error') onError?.(data)

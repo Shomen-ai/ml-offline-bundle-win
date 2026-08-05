@@ -2,11 +2,12 @@
 import json
 
 from anyio import to_thread
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sse_starlette.sse import EventSourceResponse
 
 from ..deps import owned_dialog
 from ..schemas.messages import MessageIn, MessageOut
+from ..services import context
 from ..services import dialogs as dialog_service
 from ..services import llm_client
 from ..services import messages as message_service
@@ -23,6 +24,18 @@ def list_messages(dialog: dict = Depends(owned_dialog)):
 @router.post("/dialogs/{dialog_id}/messages")
 async def send_message(body: MessageIn, dialog: dict = Depends(owned_dialog)):
     dialog_id = dialog["id"]
+    settings = await to_thread.run_sync(settings_service.get_all)
+
+    # длинное сообщение отвергаем до записи в базу: иначе в истории
+    # останется вопрос, на который модель физически не может ответить
+    if not await context.fits_alone(body.content, settings):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Сообщение длиннее контекста модели. Разбейте его на части "
+                "или увеличьте размер контекста в настройках."
+            ),
+        )
 
     async def event_stream():
         # 1) сохраняем сообщение пользователя; первому сообщению — заголовок диалога
@@ -41,12 +54,14 @@ async def send_message(body: MessageIn, dialog: dict = Depends(owned_dialog)):
             ),
         }
 
-        # 2) история диалога -> контекст модели; системный промпт из настроек
-        #    идёт первым сообщением и в базе не хранится
-        settings = await to_thread.run_sync(settings_service.get_all)
-        history = await to_thread.run_sync(message_service.history_for_model, dialog_id)
-        if settings["system_prompt"]:
-            history = [{"role": "system", "content": settings["system_prompt"]}] + history
+        # 2) контекст: системный промпт, сводка и столько истории, сколько
+        #    влезает в бюджет токенов; при переполнении старое сжимается
+        history: list[dict] = []
+        async for kind, payload in context.assemble(dialog_id, settings):
+            if kind == "status":
+                yield {"event": "status", "data": payload}
+            else:
+                history = payload
 
         # 3) стримим ответ отдельного LLM-сервера. Модель, температура и потолок
         #    длины — общие для всех диалогов, их задаёт админ-панель

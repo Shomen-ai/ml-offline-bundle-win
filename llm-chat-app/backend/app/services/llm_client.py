@@ -24,6 +24,32 @@ async def health() -> dict:
         return r.json()
 
 
+async def tokenize(texts: list[str], model: str | None = None) -> list[int]:
+    """Длины текстов в токенах. Таймаут щедрый: первая загрузка модели долгая."""
+    async with httpx.AsyncClient(timeout=600) as client:
+        r = await client.post(
+            f"{config.LLM_URL}/tokenize", json={"texts": texts, "model": model}
+        )
+        r.raise_for_status()
+        return r.json()["counts"]
+
+
+async def complete(
+    messages: list[dict],
+    model: str | None,
+    max_tokens: int = 512,
+    temperature: float = 0.2,
+) -> str:
+    """Ответ целиком, без стриминга — для служебных задач вроде сжатия истории."""
+    parts = [
+        delta
+        async for delta in stream_chat(
+            messages, model, max_tokens=max_tokens, temperature=temperature
+        )
+    ]
+    return "".join(parts)
+
+
 async def load(model: str, n_ctx: int, n_gpu_layers: int) -> dict:
     """Перезагружает модель с новыми параметрами.
 

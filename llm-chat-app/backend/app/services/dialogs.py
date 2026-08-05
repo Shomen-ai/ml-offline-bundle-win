@@ -18,6 +18,23 @@ def get(dialog_id: int) -> dict | None:
     )
 
 
+def get_summary(dialog_id: int) -> dict:
+    """Сводка диалога и граница, до которой она его покрывает."""
+    row = db.query_one(
+        "SELECT summary, summary_upto FROM dpis_dialogs WHERE id = :d", {"d": dialog_id}
+    )
+    if row is None:
+        return {"summary": "", "summary_upto": 0}
+    return {"summary": row["summary"] or "", "summary_upto": int(row["summary_upto"] or 0)}
+
+
+def set_summary(dialog_id: int, summary: str, upto: int) -> None:
+    db.execute(
+        "UPDATE dpis_dialogs SET summary = :s, summary_upto = :u WHERE id = :d",
+        {"s": summary, "u": upto, "d": dialog_id},
+    )
+
+
 def get_owned(dialog_id: int, user_id: int) -> dict | None:
     """Диалог, если он принадлежит этому пользователю. Иначе None."""
     return db.query_one(

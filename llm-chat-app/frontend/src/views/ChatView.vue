@@ -12,6 +12,7 @@ const activeId = ref(null)
 const messages = ref([])
 const draft = ref('')
 const busy = ref(false)
+const status = ref('')
 const error = ref('')
 const messagesEl = ref(null)
 // счётчик временных ключей: пока сообщение не сохранено, id ему нужен всё равно,
@@ -85,7 +86,12 @@ async function send() {
         // подменяем временные ключи настоящими id из базы
         if (meta.user_message_id) userMsg.id = meta.user_message_id
       },
+      onStatus: (text) => {
+        // сжатие истории — отдельная генерация, без подписи выглядит зависанием
+        status.value = text
+      },
       onDelta: (delta) => {
+        status.value = ''
         assistant.content += delta
         scrollDown()
       },
@@ -100,6 +106,7 @@ async function send() {
     error.value = e.message
   } finally {
     busy.value = false
+    status.value = ''
     scrollDown()
   }
 }
@@ -165,7 +172,9 @@ onMounted(async () => {
         <p v-if="!activeId" class="hint center">Создайте диалог слева</p>
         <div v-for="m in messages" :key="m.id" class="msg" :class="m.role">
           <div class="bubble">
-            <span v-if="m.role === 'assistant' && !m.content && busy" class="typing">думает…</span>
+            <span v-if="m.role === 'assistant' && !m.content && busy" class="typing">
+              {{ status ? status + '…' : 'думает…' }}
+            </span>
             <template v-else>{{ m.content }}</template>
           </div>
         </div>
