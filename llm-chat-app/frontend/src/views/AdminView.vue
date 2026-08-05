@@ -11,6 +11,24 @@ const error = ref('')
 const notice = ref('')
 
 const coldKeys = computed(() => spec.value.filter((s) => s.cold).map((s) => s.key))
+
+// thinking_models хранится строкой через запятую, а правится галочками
+// по реальному списку моделей — руками имена файлов набирать незачем
+const thinkingList = computed(() =>
+  String(values.value.thinking_models || '').split(',').map((s) => s.trim()).filter(Boolean),
+)
+// имена, которых больше нет в папке моделей: файл переименовали или убрали.
+// Показываем отдельно, чтобы настройка не пропадала молча
+const thinkingMissing = computed(() =>
+  thinkingList.value.filter((n) => !models.value.some((m) => m.name === n)),
+)
+
+function toggleThinking(name, on) {
+  const next = on
+    ? [...thinkingList.value, name]
+    : thinkingList.value.filter((n) => n !== name)
+  values.value.thinking_models = next.join(', ')
+}
 const titles = computed(() => Object.fromEntries(spec.value.map((s) => [s.key, s.title])))
 
 const dirtyKeys = computed(() =>
@@ -129,11 +147,27 @@ onMounted(async () => {
         <small class="hint">Пользователь может переключить в чате</small>
       </label>
 
-      <label>
-        Модели с поддержкой размышлений
-        <input v-model="values.thinking_models" type="text" placeholder="qwen3-8b.gguf, qwen3-32b.gguf" />
-        <small class="hint">Через запятую. У остальных моделей тумблер не показывается</small>
-      </label>
+      <div class="wide field">
+        <span class="field-title">Модели с поддержкой размышлений</span>
+        <div class="checks">
+          <label v-for="m in models" :key="m.name" class="check">
+            <input
+              type="checkbox"
+              :checked="thinkingList.includes(m.name)"
+              @change="toggleThinking(m.name, $event.target.checked)"
+            />
+            {{ m.name }}
+          </label>
+          <label v-for="name in thinkingMissing" :key="name" class="check missing">
+            <input type="checkbox" checked @change="toggleThinking(name, false)" />
+            {{ name }} — файла нет в папке моделей
+          </label>
+          <p v-if="!models.length && !thinkingMissing.length" class="hint">
+            Список моделей недоступен — не поднят LLM-сервер
+          </p>
+        </div>
+        <small class="hint">У остальных моделей тумблер размышлений в чате не показывается</small>
+      </div>
 
       <label class="wide">
         Системный промпт
@@ -161,7 +195,12 @@ onMounted(async () => {
 .admin-head h1 { font-size: 20px; margin: 0 0 16px; }
 .admin-form { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .admin-form label { display: flex; flex-direction: column; gap: 6px; }
-.admin-form label.wide { grid-column: 1 / -1; }
+.admin-form label.wide, .admin-form .wide { grid-column: 1 / -1; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field-title { font-weight: 600; }
+.checks { display: flex; flex-direction: column; gap: 4px; }
+.check { flex-direction: row !important; align-items: center; gap: 8px; font-weight: normal; }
+.check.missing { color: #b26a00; }
 .admin-form small { font-weight: normal; }
 .admin-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; }
 .warn-text { color: #b26a00; }
