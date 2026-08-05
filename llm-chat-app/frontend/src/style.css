@@ -93,6 +93,23 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--a
 .msg.assistant .bubble { background: var(--panel-2); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
 .typing { color: var(--muted); font-style: italic; }
 
+/* Размышления модели: живут только на экране, в базу не пишутся.
+   Ответ ассистента из-за них перестаёт быть одиночным элементом строки,
+   поэтому его сообщение выкладывается колонкой. */
+.msg.assistant { flex-direction: column; align-items: flex-start; gap: 6px; }
+.thinking {
+  max-width: min(72ch, 85%); font-size: 13.5px; color: var(--muted);
+  background: var(--panel-2); border: 1px dashed var(--line);
+  border-radius: 10px; padding: 6px 12px;
+}
+.thinking summary { cursor: pointer; user-select: none; }
+.thinking pre { margin: 8px 0 0; white-space: pre-wrap; word-break: break-word; font-family: inherit; }
+
+.think-toggle {
+  display: flex; align-items: center; gap: 6px; white-space: nowrap;
+  font-size: 13.5px; color: var(--muted);
+}
+
 .composer {
   display: flex; gap: 10px; padding: 14px 20px;
   border-top: 1px solid var(--line); background: var(--panel);

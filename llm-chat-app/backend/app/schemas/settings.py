@@ -14,6 +14,8 @@ class SettingsPatch(BaseModel):
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     max_tokens: int | None = Field(default=None, ge=1, le=8192)
     system_prompt: str | None = Field(default=None, max_length=8000)
+    thinking_enabled: bool | None = None
+    thinking_models: str | None = Field(default=None, max_length=1000)
 
 
 class SettingInfo(BaseModel):

@@ -120,6 +120,21 @@ onMounted(async () => {
         <input v-model.number="values.max_tokens" type="number" min="1" max="8192" />
       </label>
 
+      <label>
+        Размышления по умолчанию
+        <select v-model="values.thinking_enabled">
+          <option :value="true">включены</option>
+          <option :value="false">выключены</option>
+        </select>
+        <small class="hint">Пользователь может переключить в чате</small>
+      </label>
+
+      <label>
+        Модели с поддержкой размышлений
+        <input v-model="values.thinking_models" type="text" placeholder="qwen3-8b.gguf, qwen3-32b.gguf" />
+        <small class="hint">Через запятую. У остальных моделей тумблер не показывается</small>
+      </label>
+
       <label class="wide">
         Системный промпт
         <textarea v-model="values.system_prompt" rows="8"

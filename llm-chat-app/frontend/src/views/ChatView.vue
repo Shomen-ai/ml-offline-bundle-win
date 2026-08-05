@@ -14,6 +14,8 @@ const draft = ref('')
 const busy = ref(false)
 const status = ref('')
 const error = ref('')
+const thinkSupported = ref(false)
+const think = ref(true)
 const messagesEl = ref(null)
 // счётчик временных ключей: пока сообщение не сохранено, id ему нужен всё равно,
 // а одинаковые ключи в v-for заставляют Vue переиспользовать чужие узлы
@@ -26,6 +28,9 @@ async function loadLlmStatus() {
   // поднят ли сервер, чтобы предупредить заранее, а не на первой отправке
   const res = await api('/llm/health')
   llmWarning.value = res.ok ? '' : 'LLM-сервер недоступен: запустите scripts\\run_llm.bat'
+  // тумблер показываем только у моделей, которые понимают /no_think
+  thinkSupported.value = !!res.thinking_supported
+  think.value = res.thinking_default !== false
 }
 
 async function loadDialogs() {
@@ -75,12 +80,18 @@ async function send() {
 
   tmpSeq += 1
   const userMsg = { id: `tmp-u-${tmpSeq}`, role: 'user', content: text }
-  const assistant = { id: `tmp-a-${tmpSeq}`, role: 'assistant', content: '' }
+  // thinking живёт только на экране: в базу размышления не пишутся
+  const assistant = { id: `tmp-a-${tmpSeq}`, role: 'assistant', content: '', thinking: '' }
   messages.value.push(userMsg, assistant)
   scrollDown()
 
   try {
     await streamChat(d.id, text, {
+      think: thinkSupported.value ? think.value : undefined,
+      onThink: (chunk) => {
+        assistant.thinking += chunk
+        scrollDown()
+      },
       onStart: (meta) => {
         if (meta.dialog_title) d.title = meta.dialog_title
         // подменяем временные ключи настоящими id из базы
@@ -171,6 +182,10 @@ onMounted(async () => {
         <p v-if="!messages.length && activeId" class="hint center">Напишите первое сообщение</p>
         <p v-if="!activeId" class="hint center">Создайте диалог слева</p>
         <div v-for="m in messages" :key="m.id" class="msg" :class="m.role">
+          <details v-if="m.thinking" class="thinking">
+            <summary>Размышления модели</summary>
+            <pre>{{ m.thinking }}</pre>
+          </details>
           <div class="bubble">
             <span v-if="m.role === 'assistant' && !m.content && busy" class="typing">
               {{ status ? status + '…' : 'думает…' }}
@@ -181,6 +196,10 @@ onMounted(async () => {
       </section>
 
       <footer class="composer">
+        <label v-if="thinkSupported" class="think-toggle" title="Модель сначала рассуждает вслух — ответ дольше, но обычно точнее">
+          <input type="checkbox" v-model="think" />
+          Размышления
+        </label>
         <textarea
           v-model="draft"
           rows="2"

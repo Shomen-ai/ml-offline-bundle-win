@@ -37,6 +37,10 @@ SPEC: dict[str, Setting] = {
     "temperature": Setting(0.7, float, False, "Температура"),
     "max_tokens": Setting(1024, int, False, "Потолок длины ответа, токенов"),
     "system_prompt": Setting("", str, False, "Системный промпт"),
+    "thinking_enabled": Setting(True, _to_bool, False, "Размышления по умолчанию"),
+    # список через запятую: у Qwen3 /no_think документирован, у прочих
+    # моделей поведение не проверено, поэтому включается вручную
+    "thinking_models": Setting("", str, False, "Модели с поддержкой размышлений"),
 }
 
 COLD_KEYS = tuple(k for k, s in SPEC.items() if s.cold)

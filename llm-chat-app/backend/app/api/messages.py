@@ -12,6 +12,7 @@ from ..services import dialogs as dialog_service
 from ..services import llm_client
 from ..services import messages as message_service
 from ..services import settings as settings_service
+from ..services import thinking
 
 router = APIRouter(prefix="/api", tags=["messages"])
 
@@ -63,9 +64,20 @@ async def send_message(body: MessageIn, dialog: dict = Depends(owned_dialog)):
             else:
                 history = payload
 
+        # переключатель размышлений: суффикс уходит только в контекст,
+        # в сохранённом сообщении пользователя его нет
+        want_think = settings["thinking_enabled"] if body.think is None else body.think
+        if not want_think and thinking.supports(settings["model_name"], settings) and history:
+            last = history[-1]
+            if last["role"] == "user":
+                last["content"] = f"{last['content']}\n{thinking.NO_THINK}"
+
         # 3) стримим ответ отдельного LLM-сервера. Модель, температура и потолок
-        #    длины — общие для всех диалогов, их задаёт админ-панель
+        #    длины — общие для всех диалогов, их задаёт админ-панель.
+        #    Размышления отделяются от ответа и в answer_parts не попадают:
+        #    на экране они живут до перезагрузки, в базе их нет вообще
         answer_parts: list[str] = []
+        splitter = thinking.Splitter()
         try:
             async for delta in llm_client.stream_chat(
                 history,
@@ -73,8 +85,18 @@ async def send_message(body: MessageIn, dialog: dict = Depends(owned_dialog)):
                 max_tokens=settings["max_tokens"],
                 temperature=settings["temperature"],
             ):
-                answer_parts.append(delta)
-                yield {"event": "delta", "data": delta}
+                for kind, text in splitter.feed(delta):
+                    if kind == "think":
+                        yield {"event": "think", "data": text}
+                    else:
+                        answer_parts.append(text)
+                        yield {"event": "delta", "data": text}
+            for kind, text in splitter.flush():
+                if kind == "think":
+                    yield {"event": "think", "data": text}
+                else:
+                    answer_parts.append(text)
+                    yield {"event": "delta", "data": text}
         except Exception as e:
             # то, что успело долететь до экрана, сохраняем: иначе после
             # перезагрузки диалога кусок ответа исчезает вместе с ошибкой
