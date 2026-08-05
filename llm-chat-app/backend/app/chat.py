@@ -29,7 +29,7 @@ class MessageIn(BaseModel):
 
 def _own_dialog(dialog_id: int, user_id: int) -> dict:
     row = db.query_one(
-        "SELECT id, title, model_name FROM dialogs WHERE id = :d AND user_id = :u",
+        "SELECT id, title, model_name FROM dpis_dialogs WHERE id = :d AND user_id = :u",
         {"d": dialog_id, "u": user_id},
     )
     if row is None:
@@ -50,7 +50,7 @@ def list_dialogs(user: dict = Depends(current_user)):
     return db.query_all(
         """
         SELECT id, title, model_name, TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI') AS created_at
-        FROM dialogs WHERE user_id = :u ORDER BY id DESC
+        FROM dpis_dialogs WHERE user_id = :u ORDER BY id DESC
         """,
         {"u": user["id"]},
     )
@@ -60,14 +60,14 @@ def list_dialogs(user: dict = Depends(current_user)):
 def create_dialog(body: DialogCreate, user: dict = Depends(current_user)):
     dialog_id = db.insert_returning_id(
         """
-        INSERT INTO dialogs (id, user_id, model_name)
-        VALUES (dialogs_seq.NEXTVAL, :u, :m)
+        INSERT INTO dpis_dialogs (id, user_id, model_name)
+        VALUES (dpis_dialogs_seq.NEXTVAL, :u, :m)
         RETURNING id INTO :out_id
         """,
         {"u": user["id"], "m": body.model_name},
     )
     return db.query_one(
-        "SELECT id, title, model_name FROM dialogs WHERE id = :d", {"d": dialog_id}
+        "SELECT id, title, model_name FROM dpis_dialogs WHERE id = :d", {"d": dialog_id}
     )
 
 
@@ -76,23 +76,23 @@ def patch_dialog(dialog_id: int, body: DialogPatch, user: dict = Depends(current
     _own_dialog(dialog_id, user["id"])
     if body.title is not None:
         db.execute(
-            "UPDATE dialogs SET title = :t WHERE id = :d", {"t": body.title, "d": dialog_id}
+            "UPDATE dpis_dialogs SET title = :t WHERE id = :d", {"t": body.title, "d": dialog_id}
         )
     if body.model_name is not None:
         db.execute(
-            "UPDATE dialogs SET model_name = :m WHERE id = :d",
+            "UPDATE dpis_dialogs SET model_name = :m WHERE id = :d",
             {"m": body.model_name, "d": dialog_id},
         )
     return db.query_one(
-        "SELECT id, title, model_name FROM dialogs WHERE id = :d", {"d": dialog_id}
+        "SELECT id, title, model_name FROM dpis_dialogs WHERE id = :d", {"d": dialog_id}
     )
 
 
 @router.delete("/dialogs/{dialog_id}")
 def delete_dialog(dialog_id: int, user: dict = Depends(current_user)):
     _own_dialog(dialog_id, user["id"])
-    db.execute("DELETE FROM messages WHERE dialog_id = :d", {"d": dialog_id})
-    db.execute("DELETE FROM dialogs WHERE id = :d", {"d": dialog_id})
+    db.execute("DELETE FROM dpis_messages WHERE dialog_id = :d", {"d": dialog_id})
+    db.execute("DELETE FROM dpis_dialogs WHERE id = :d", {"d": dialog_id})
     return {"ok": True}
 
 
@@ -102,7 +102,7 @@ def list_messages(dialog_id: int, user: dict = Depends(current_user)):
     return db.query_all(
         """
         SELECT id, role, content, TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at
-        FROM messages WHERE dialog_id = :d ORDER BY id
+        FROM dpis_messages WHERE dialog_id = :d ORDER BY id
         """,
         {"d": dialog_id},
     )
@@ -111,8 +111,8 @@ def list_messages(dialog_id: int, user: dict = Depends(current_user)):
 def _save_message(dialog_id: int, role: str, content: str) -> int:
     return db.insert_returning_id(
         """
-        INSERT INTO messages (id, dialog_id, role, content)
-        VALUES (messages_seq.NEXTVAL, :d, :r, :c)
+        INSERT INTO dpis_messages (id, dialog_id, role, content)
+        VALUES (dpis_messages_seq.NEXTVAL, :d, :r, :c)
         RETURNING id INTO :out_id
         """,
         {"d": dialog_id, "r": role, "c": content},
@@ -131,7 +131,7 @@ async def send_message(dialog_id: int, body: MessageIn, user: dict = Depends(cur
             dialog_title = body.content.strip().replace("\n", " ")[:60]
             await to_thread.run_sync(
                 db.execute,
-                "UPDATE dialogs SET title = :t WHERE id = :d",
+                "UPDATE dpis_dialogs SET title = :t WHERE id = :d",
                 {"t": dialog_title, "d": dialog_id},
             )
         yield {
@@ -147,7 +147,7 @@ async def send_message(dialog_id: int, body: MessageIn, user: dict = Depends(cur
             db.query_all,
             f"""
             SELECT role, content FROM (
-                SELECT role, content, id FROM messages
+                SELECT role, content, id FROM dpis_messages
                 WHERE dialog_id = :d ORDER BY id DESC
             ) WHERE ROWNUM <= {HISTORY_LIMIT} ORDER BY id
             """,

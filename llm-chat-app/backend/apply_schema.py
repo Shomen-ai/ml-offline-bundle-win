@@ -8,13 +8,13 @@ import sys
 from app import db
 
 DROP_STATEMENTS = [
-    "DROP TABLE messages",
-    "DROP TABLE dialogs",
-    "DROP TABLE sessions",
-    "DROP TABLE users",
-    "DROP SEQUENCE messages_seq",
-    "DROP SEQUENCE dialogs_seq",
-    "DROP SEQUENCE users_seq",
+    "DROP TABLE dpis_messages",
+    "DROP TABLE dpis_dialogs",
+    "DROP TABLE dpis_sessions",
+    "DROP TABLE dpis_users",
+    "DROP SEQUENCE dpis_messages_seq",
+    "DROP SEQUENCE dpis_dialogs_seq",
+    "DROP SEQUENCE dpis_users_seq",
 ]
 
 

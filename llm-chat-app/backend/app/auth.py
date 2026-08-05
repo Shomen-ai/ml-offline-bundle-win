@@ -42,7 +42,7 @@ def _issue_token(user_id: int) -> str:
     token = secrets.token_urlsafe(48)
     db.execute(
         """
-        INSERT INTO sessions (token, user_id, expires_at)
+        INSERT INTO dpis_sessions (token, user_id, expires_at)
         VALUES (:token, :user_id, SYSDATE + :ttl_hours / 24)
         """,
         {"token": token, "user_id": user_id, "ttl_hours": config.TOKEN_TTL_HOURS},
@@ -51,25 +51,25 @@ def _issue_token(user_id: int) -> str:
 
 
 def _user_id_for(username: str) -> int:
-    """id доменного пользователя; при первом входе заводит строку в USERS.
+    """id доменного пользователя; при первом входе заводит строку в DPIS_USERS.
 
     Пароль не сохраняется — в доменном режиме колонки password_hash/salt пустые.
     """
-    row = db.query_one("SELECT id FROM users WHERE username = :u", {"u": username})
+    row = db.query_one("SELECT id FROM dpis_users WHERE username = :u", {"u": username})
     if row is not None:
         return int(row["id"])
     try:
         return db.insert_returning_id(
             """
-            INSERT INTO users (id, username)
-            VALUES (users_seq.NEXTVAL, :username)
+            INSERT INTO dpis_users (id, username)
+            VALUES (dpis_users_seq.NEXTVAL, :username)
             RETURNING id INTO :out_id
             """,
             {"username": username},
         )
     except oracledb.IntegrityError:
         # два одновременных первых входа — сосед успел вставить, читаем его строку
-        row = db.query_one("SELECT id FROM users WHERE username = :u", {"u": username})
+        row = db.query_one("SELECT id FROM dpis_users WHERE username = :u", {"u": username})
         if row is None:
             raise
         return int(row["id"])
@@ -92,8 +92,8 @@ def register(body: Credentials):
     try:
         user_id = db.insert_returning_id(
             """
-            INSERT INTO users (id, username, password_hash, salt)
-            VALUES (users_seq.NEXTVAL, :username, :password_hash, :salt)
+            INSERT INTO dpis_users (id, username, password_hash, salt)
+            VALUES (dpis_users_seq.NEXTVAL, :username, :password_hash, :salt)
             RETURNING id INTO :out_id
             """,
             {
@@ -117,7 +117,7 @@ def login(body: Credentials):
         return AuthOut(token=_issue_token(user_id), username=body.username)
 
     row = db.query_one(
-        "SELECT id, password_hash, salt FROM users WHERE username = :u",
+        "SELECT id, password_hash, salt FROM dpis_users WHERE username = :u",
         {"u": body.username},
     )
     # password_hash пуст у доменных учёток — локальным паролем такие не пускаем
@@ -138,7 +138,7 @@ def current_user(authorization: str = Header(default="")) -> dict:
     row = db.query_one(
         """
         SELECT u.id, u.username
-        FROM sessions s JOIN users u ON u.id = s.user_id
+        FROM dpis_sessions s JOIN dpis_users u ON u.id = s.user_id
         WHERE s.token = :token AND s.expires_at > SYSDATE
         """,
         {"token": token},
@@ -155,5 +155,5 @@ def me(user: dict = Depends(current_user)):
 
 @router.post("/logout")
 def logout(user: dict = Depends(current_user)):
-    db.execute("DELETE FROM sessions WHERE token = :token", {"token": user["token"]})
+    db.execute("DELETE FROM dpis_sessions WHERE token = :token", {"token": user["token"]})
     return {"ok": True}
