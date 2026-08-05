@@ -9,7 +9,7 @@
 """
 import logging
 
-from . import config
+from .. import config
 
 log = logging.getLogger(__name__)
 

@@ -7,7 +7,7 @@ from typing import AsyncIterator
 
 import httpx
 
-from . import config
+from .. import config
 
 
 async def list_models() -> dict:

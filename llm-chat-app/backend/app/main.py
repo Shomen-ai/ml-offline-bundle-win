@@ -1,13 +1,30 @@
 """Точка входа backend'а: FastAPI + статика собранного фронта."""
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, chat, config, db
+from . import config, db
+from .api import router as api_router
 
-app = FastAPI(title="LLM Chat", docs_url="/api/docs", openapi_url="/api/openapi.json")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # пул поднимаем один раз на процесс; init_oracle_client внутри —
+    # операция разовая и повторного вызова не терпит
+    db.init_pool()
+    yield
+    db.close_pool()
+
+
+app = FastAPI(
+    title="LLM Chat",
+    docs_url="/api/docs",
+    openapi_url="/api/openapi.json",
+    lifespan=lifespan,
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -16,18 +33,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router)
-app.include_router(chat.router)
-
-
-@app.on_event("startup")
-def _startup():
-    db.init_pool()
-
-
-@app.on_event("shutdown")
-def _shutdown():
-    db.close_pool()
+app.include_router(api_router)
 
 
 @app.get("/api/health")

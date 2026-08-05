@@ -49,13 +49,14 @@ Backend и LLM-сервер запускаются так же (venv с теми
 
 ```
 backend/
-  app/main.py        FastAPI, CORS, статика dist
-  app/config.py      .env: Oracle, LLM_URL, TTL сессий
+  app/main.py        создание приложения, lifespan, CORS, статика dist
+  app/config.py      .env: Oracle, LDAP, LLM_URL, TTL сессий
   app/db.py          пул oracledb (thick), CLOB->str, RETURNING id
-  app/auth.py        /api/auth: register, login, logout, me
-  app/chat.py        /api/dialogs..., SSE-стрим ответа
-  app/llm_client.py  httpx-клиент к LLM-серверу
-  schema.sql         DDL под 11g (sequences, CLOB)
+  app/deps.py        зависимости FastAPI: current_user, owned_dialog
+  app/api/           маршруты: auth, dialogs, messages, models
+  app/schemas/       pydantic-модели запросов и ответов
+  app/services/      логика: auth, dialogs, messages, ldap_auth, llm_client
+  schema.sql         DDL под 11g (sequences, CLOB), объекты с приставкой dpis_
   apply_schema.py    применяет schema.sql (--drop = пересоздать)
 llm-server/server.py отдельный сервер с нейронкой
 frontend/            Vue 3 + Vite (vue-router, hash-режим), без UI-библиотек
