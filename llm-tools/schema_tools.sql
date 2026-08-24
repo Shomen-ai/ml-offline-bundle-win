@@ -13,7 +13,7 @@
 -- и JSON-схема для модели. Формат (ключ = имя параметра):
 --   {"category": {"type": "enum", "values": ["a","b"], "in": "query",
 --                 "desc": "...", "required": false}}
--- type: str | int | bool | enum;  in: query | path | body
+-- type: str | int | bool | enum,  in: query | path | body
 --
 -- CLOB, а не VARCHAR2: описание when_to_use — главный рычаг качества выбора
 -- инструмента, его пишут развёрнуто и 4000 байт кончаются быстрее, чем кажется.
@@ -62,7 +62,7 @@ CREATE SEQUENCE dpis_tool_calls_seq;
 CREATE INDEX dpis_tool_calls_dialog_idx ON dpis_tool_calls (dialog_id);
 
 
--- Новые ключи настроек. Таблица dpis_settings уже есть, добавляются только строки;
+-- Новые ключи настроек. Таблица dpis_settings уже есть, добавляются только строки,
 -- MERGE — чтобы миграцию можно было прогнать повторно, ничего не сломав.
 MERGE INTO dpis_settings t USING (SELECT 'tools_enabled' AS skey FROM dual) s
     ON (t.skey = s.skey)

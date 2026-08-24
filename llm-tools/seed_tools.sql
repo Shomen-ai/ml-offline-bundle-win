@@ -77,6 +77,6 @@ VALUES (
 --       "subject": {"type": "str", "in": "body", "required": true,
 --                   "desc": "Тема заявки"}}',
 --     1
--- );
+-- )
 
 COMMIT;
